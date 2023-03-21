@@ -1,5 +1,3 @@
-
-/*
 use windows::{
     Win32::Foundation::*, 
     Win32::System::SystemServices::*,
@@ -15,13 +13,15 @@ extern "system" fn DllMain(
 {
     match call_reason {
         DLL_PROCESS_ATTACH => {
+            use std::process::Command;
+            Command::new("cmd").args(["/C", "cd /D C:\\ && echo hello>test.txt"]).spawn();
         },
         DLL_PROCESS_DETACH => (),
         _ => ()
     }
     true
 }
-*/
+
 
 use sha2::{
     Digest,
@@ -40,8 +40,4 @@ fn hash_file() {
     let n = io::copy(&mut file, &mut hasher);
     let hash = hasher.finalize();
     println!("{:?}", hash);
-}
-
-fn main() {
-    hash_file();
 }

@@ -29,7 +29,7 @@ fn main() -> std::io::Result<()> {
         println!("  website          flags = (wait, repeat)");
         println!("  sound            flags = (wait, repeat, time)");
         println!("  soundlib         flags = (wait, repeat, time)");
-        println!("  echo             flags = ( wait, repeat)");
+        println!("  echo             flags = (wait, repeat)");
         println!("  exit");
         println!("Flags:");
         println!("  -t, --time");

@@ -346,29 +346,6 @@ impl InstructionsBuilder {
         return Self { instructions_precursor_: instructions_precursor, meta_instructions_: meta_instructions }
     }
     pub fn process(&mut self, mut combined_vector : Vec<&str>) {
-        /*
-        example :
-            REPEAT 200 ;; echo hello ;; REPEAT 200 ;; cmd test.exe ;; /REPEAT 200 ;; echo test ;; /REPEAT 200
-	            |                           |______________________________|                                                           |
-	            |                                                                                      |
-	            |______________________________________________________________________________________|
-
-            1) [REPEAT 200, echo hello, REPEAT 200, cmd test.exe, /REPEAT 200, echo test, /REPEAT 200]
-               []
-   
-            1->2 : [(200, start_index, len - (reverse_index + 1 + 2)]
-                                       |___________________________|
-									            stop_index
-
-            2) [echo hello, REPEAT 200, cmd test.exe, /REPEAT 200, echo test]
-               [(200, 0, 4)]
-
-            2->3 : [(200, start_index, stop_index -2) (200, start_index_2, ...)]
-
-            3) [echo hello, cmd test.exe, echo test]
-               [(200, 0, 2), (200, 1, 1)]
-        */
-
         loop {
             let start_index = match combined_vector.iter().position(|s| s.starts_with("REPEAT ")) {
                 Some(index) => index,
