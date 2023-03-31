@@ -6,7 +6,7 @@ Ardakan-Client/Cargo.lock
 Ardakan-Client/src/constants.rs
 Tehran/target
 Tehran/Cargo.lock
-Tehran/desing.md
+Tehran/design.md
 Tehran/ardakan-config.default
 Tehran/setvol-config.default
 Tehran/soundlib-config.default
