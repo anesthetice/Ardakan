@@ -1,12 +1,16 @@
 [package]
 name = "Tehran"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
-windows = {version = "0.46.0",features = ["Win32_Foundation", "Win32_System_SystemServices", "Win32_UI_WindowsAndMessaging"]}
-sha2 = {version = "0.10.6"}
+windows = {version = "0.46.*",features = ["Win32_Foundation", "Win32_System_SystemServices", "Win32_UI_WindowsAndMessaging"]}
+sha2 = {version = "0.10.*"}
+lazy_static = "1.4.*"
+serde = { version = "1.0.*", features = ["derive"] }
+serde_json = "1.0.*"
+rand = "0.8.*"
+zip = "0.6.*"
 
 [lib]
 crate-type = ["cdylib"]
-#crate-type = ["bin"]

