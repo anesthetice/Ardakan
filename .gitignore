@@ -1,9 +1,16 @@
 Ardakan-Server/target
+Ardakan-Server/Cargo.lock
 Ardakan-Server/src/constants.rs
 Ardakan-Client/target
+Ardakan-Client/Cargo.lock
 Ardakan-Client/src/constants.rs
 Tehran/target
+Tehran/Cargo.lock
+Tehran/desing.md
+Tehran/ardakan-config.default
+Tehran/setvol-config.default
+Tehran/soundlib-config.default
 Tehran/src/constants.rs
-Tehran/src/main.rs
 /testing
 /archive
+/AEOI
