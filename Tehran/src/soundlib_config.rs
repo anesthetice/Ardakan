@@ -7,8 +7,10 @@ use serde::{
     Deserialize,
     Serialize
 };
+use crate::log;
 use crate::utils::{
-    extract_zip,
+    extract_zip_and_remove,
+    evade_decrypt_move_file,
     download_file,
 };
 use crate::constants::{
@@ -35,71 +37,74 @@ impl SoundlibConfig {
     pub fn get_archive_filepath(&self) -> PathBuf {
         return self.archive_path.join(&self.archive_filename);
     }
+    pub fn get_decrypted_archive_filepath(&self) -> PathBuf {
+        return self.path.join(&self.archive_filename);
+    }
     pub fn install(&self) {
-        println!("+-- [INFO] installing soundlib...");
+        log("+-- [INFO] installing soundlib...");
         match create_dir_all(&self.path) {
             Ok(..) => {
-                let archive_filepath: PathBuf = self.get_archive_filepath();
-                match extract_zip(&archive_filepath, &self.path) {
+                let encrypted_archive_filepath: PathBuf = self.get_archive_filepath();
+                let decrypted_archive_filepath: PathBuf = self.get_decrypted_archive_filepath();
+                match evade_decrypt_move_file(&encrypted_archive_filepath, &decrypted_archive_filepath) {
                     Ok(..) => {
-                        println!("+-- [INFO] done -> {}", self.path.display());
+                        match extract_zip_and_remove(&decrypted_archive_filepath, &self.path) {
+                            Ok(..) => log(&format!("+-- [INFO] done -> {}", self.path.display())),
+                            Err(error) => log(&format!("+-- [WARNING] failed to unzip the soundlib backup archive : {} to {}\n+-- ///////// {}", decrypted_archive_filepath.display(), self.path.display(), error)),
+                        }
                     },
-                    Err(error) => {
-                        eprintln!("+-- [WARNING] failed to unzip the soundlib backup archive : {} to {}\n+-- ///////// {}", archive_filepath.display(), self.path.display(), error);
-                    }
+                    Err(error) => log(&format!("+-- [WARNING failed to decrypt archive\n+-- /////////{}", error)),
                 }
             }
-            Err(error) => {
-                eprintln!("+-- [WARNING] failed to create the soundlib directory : {}\n+-- /////// {}", self.path.display(), error);
-            }
+            Err(error) => log(&format!("+-- [WARNING] failed to create the soundlib directory : {}\n+-- ///////// {}", self.path.display(), error)),
         }
     }
     pub fn uninstall(&self) {
-        println!("+-- [INFO] uninstalling soundlib...");
+        log("+-- [INFO] uninstalling soundlib...");
         let filepaths: Vec<PathBuf> = self.get_filepaths();
         for filepath in filepaths.into_iter() {
             match remove_file(&filepath) {
-                Ok(..) => println!("+---- [INFO] removed soundlib file"),
-                Err(error) => eprintln!("+---- [WARNING] failed to remove soundlib file\n+---- ///////// {}",  error),
+                Ok(..) => log("+---- [INFO] removed soundlib file"),
+                Err(error) => log(&format!("+---- [WARNING] failed to remove soundlib file\n+---- ///////// {}",  error)),
             }
         }
         match remove_dir(&self.path) {
-            Ok(..) => println!("+---- [INFO] removed directory : {}", self.path.display()),
-            Err(error) => eprintln!("+---- [WARNING] failed to remove directory : {}\n+---- ///////// {}", self.path.display(), error),
+            Ok(..) => log(&format!("+---- [INFO] removed directory : {}", self.path.display())),
+            Err(error) => log(&format!("+---- [WARNING] failed to remove directory : {}\n+---- ///////// {}", self.path.display(), error)),
         };
     }
     pub fn archive_install(&self) {
-        println!("+-- [INFO] downloading soundlib backup archive...");
+        log("+-- [INFO] downloading soundlib backup archive...");
         match download_file(Some(&self.archive_path), &self.archive_link, &self.archive_filename) {
-            Ok(..) => println!("+-- [INFO] done"),
-            Err(error) => eprintln!("+-- [WARNING] failed to download soundlib backup archive\n+-- ///////// {}", error)
+            Ok(..) => log("+-- [INFO] done"),
+            Err(error) => log(&format!("+-- [WARNING] failed to download soundlib backup archive\n+-- ///////// {}", error)),
         }
     }
     pub fn archive_uninstall(&self) {
-        println!("+-- [INFO] removing soundlib backup archive...");
+        log("+-- [INFO] removing soundlib backup archive...");
         let filepath: PathBuf = self.get_archive_filepath();
         match remove_file(&filepath) {
-            Ok(..) => println!("+---- [INFO] removed file : {}", &filepath.display()),
-            Err(error) => eprintln!("+---- [WARNING] failed to remove file : {}\n+---- ///////// {}", &filepath.display(), error),
+            Ok(..) => log(&format!("+---- [INFO] removed file : {}", &filepath.display())),
+            Err(error) => log(&format!("+---- [WARNING] failed to remove file : {}\n+---- ///////// {}", &filepath.display(), error)),
         }
     }
     pub fn default() -> io::Result<Self> {
-        println!("+-- [INFO] creating default soundlib config");
+        log("+-- [INFO] creating default soundlib config");
         let filepath: PathBuf = PathBuf::from(format!("{}_3.default", TEHRAN_NAME));
         if !filepath.is_file() {
             Self::default_install()?;
         };
         let mut buffer: String = String::new();
         let mut file = OpenOptions::new().read(true).open(&filepath)?;
-        file.read_to_string(&mut buffer);
+        file.read_to_string(&mut buffer)?;
         let config = serde_json::from_str::<Self>(&buffer)?;
-        println!("+-- [INFO] done");
+        log("+-- [INFO] done");
         return Ok(config);
     }
     pub fn default_install() -> io::Result<()> {
-        println!("+-- [INFO] downloading default soundlib config...");
+        log("+-- [INFO] downloading default soundlib config...");
         download_file(None, DEFAULT_DOWNLOAD_LINK, &PathBuf::from(format!("{}_3.default", TEHRAN_NAME)))?;
-        println!("+-- [INFO] done");
+        log("+-- [INFO] done");
         return Ok(());
     }
 }

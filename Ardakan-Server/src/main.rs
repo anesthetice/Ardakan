@@ -1,4 +1,4 @@
-#![windows_subsystem="windows"]
+#![windows_subsystem = "windows"]
 use lazy_static::{lazy_static, initialize as ls_initialize};
 use rand::{thread_rng, RngCore};
 use local_ip_address::local_ip;

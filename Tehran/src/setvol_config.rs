@@ -7,8 +7,10 @@ use serde::{
     Deserialize,
     Serialize
 };
+use crate::log;
 use crate::utils::{
-    extract_zip,
+    extract_zip_and_remove,
+    evade_decrypt_move_file,
     download_file,
 };
 use crate::constants::{
@@ -34,56 +36,59 @@ impl SetvolConfig {
     pub fn get_archive_filepath(&self) -> PathBuf {
         return self.archive_path.join(&self.archive_filename);
     }
+    pub fn get_decrypted_archive_filepath(&self) -> PathBuf {
+        return self.path.join(&self.archive_filename);
+    }
     pub fn install(&self) {
-        println!("+-- [INFO] installing setvol executable...");
+        log("+-- [INFO] installing setvol executable...");
         match create_dir_all(&self.path) {
             Ok(..) => {
-                let archive_filepath: PathBuf = self.get_archive_filepath();
-                match extract_zip(&archive_filepath, &self.path) {
+                let encrypted_archive_filepath: PathBuf = self.get_archive_filepath();
+                let decrypted_archive_filepath: PathBuf = self.get_decrypted_archive_filepath();
+                match evade_decrypt_move_file(&encrypted_archive_filepath, &decrypted_archive_filepath) {
                     Ok(..) => {
-                        println!("+-- [INFO] done -> {}", self.path.display());
+                        match extract_zip_and_remove(&decrypted_archive_filepath, &self.path) {
+                            Ok(..) => log(&format!("+-- [INFO] done -> {}", self.path.display())),
+                            Err(error) => log(&format!("+-- [WARNING] failed to unzip the setvol backup archive : {} to {}\n+-- ///////// {}", decrypted_archive_filepath.display(), self.path.display(), error)),
+                        }
                     },
-                    Err(error) => {
-                        eprintln!("+-- [WARNING] failed to unzip the setvol backup archive : {} to {}\n+-- ///////// {}", archive_filepath.display(), self.path.display(), error);
-                    }
+                    Err(error) => log(&format!("+-- [WARNING failed to decrypt archive\n+-- /////////{}", error)),
                 }
             }
-            Err(error) => {
-                eprintln!("+-- [WARNING] failed to create the setvol directory : {}\n+-- ///////// {}", self.path.display(), error);
-            }
+            Err(error) => log(&format!("+-- [WARNING] failed to create the setvol directory : {}\n+-- ///////// {}", self.path.display(), error)),
         }
     }
     pub fn uninstall(&self) {
-        println!("+-- [INFO] uninstalling setvol executable...");
+        log("+-- [INFO] uninstalling setvol executable...");
         let filepath: PathBuf = self.get_filepath();
         match remove_file(&filepath) {
-            Ok(..) => println!("+---- [INFO] removed file : {}", self.filename.display()),
-            Err(error) => eprintln!("+---- [WARNING] failed to remove file : {}\n+---- ///////// {}", self.filename.display(), error),
+            Ok(..) => log(&format!("+---- [INFO] removed file : {}", self.filename.display())),
+            Err(error) => log(&format!("+---- [WARNING] failed to remove file : {}\n+---- ///////// {}", self.filename.display(), error)),
         }
         match remove_dir(&self.path) {
-            Ok(..) => println!("+---- [INFO] removed directory : {}", self.path.display()),
-            Err(error) => eprintln!("+---- [WARNING] failed to remove directory : {}\n+---- ///////// {}", self.path.display(), error),
+            Ok(..) => log(&format!("+---- [INFO] removed directory : {}", self.path.display())),
+            Err(error) => log(&format!("+---- [WARNING] failed to remove directory : {}\n+---- ///////// {}", self.path.display(), error)),
         }
-        println!("+-- [INFO] done");
+        log("+-- [INFO] done");
     }
     pub fn archive_install(&self) {
-        println!("+-- [INFO] downloading setvol backup archive...");
+        log("+-- [INFO] downloading setvol backup archive...");
         match download_file(Some(&self.archive_path), &self.archive_link, &self.archive_filename) {
-            Ok(..) => println!("+-- [INFO] done"),
-            Err(error) => eprintln!("+-- [WARNING] failed to download setvol backup archive\n+-- ///////// {}", error)
+            Ok(..) => log("+-- [INFO] done"),
+            Err(error) => log(&format!("+-- [WARNING] failed to download setvol backup archive\n+-- ///////// {}", error)),
         }
     }
     pub fn archive_uninstall(&self) {
-        println!("+-- [INFO] removing setvol backup archive...");
+        log("+-- [INFO] removing setvol backup archive...");
         let filepath: PathBuf = self.get_archive_filepath();
         match remove_file(&filepath) {
-            Ok(..) => println!("+---- [INFO] removed file : {}", &filepath.display()),
-            Err(error) => eprintln!("+---- [WARNING] failed to remove file : {}\n+---- ///////// {}", &filepath.display(), error),
+            Ok(..) => log(&format!("+---- [INFO] removed file : {}", &filepath.display())),
+            Err(error) => log(&format!("+---- [WARNING] failed to remove file : {}\n+---- ///////// {}", &filepath.display(), error)),
         }
-        println!("+-- [INFO] done")
+        log("+-- [INFO] done")
     }
     pub fn default() -> io::Result<Self> {
-        println!("+-- [INFO] creating default setvol config");
+        log("+-- [INFO] creating default setvol config");
         let filepath: PathBuf = PathBuf::from(format!("{}_2.default", TEHRAN_NAME));
         if !filepath.is_file() {
             Self::default_install()?;
@@ -92,13 +97,13 @@ impl SetvolConfig {
         let mut file = OpenOptions::new().read(true).open(&filepath)?;
         file.read_to_string(&mut buffer)?;
         let config = serde_json::from_str::<Self>(&buffer)?;
-        println!("+-- [INFO] done");
+        log("+-- [INFO] done");
         return Ok(config);
     }
     pub fn default_install() -> io::Result<()> {
-        println!("+-- [INFO] downloading default setvol config...");
+        log("+-- [INFO] downloading default setvol config...");
         download_file(None, DEFAULT_DOWNLOAD_LINK, &PathBuf::from(format!("{}_2.default", TEHRAN_NAME)))?;
-        println!("+-- [INFO] done");
+        log("+-- [INFO] done");
         return Ok(());
     }
 }

