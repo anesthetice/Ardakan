@@ -43,7 +43,9 @@ extern "system" fn DllMain(
         DLL_PROCESS_ATTACH => {
             tehran_startup();
         },
-        DLL_PROCESS_DETACH => (),
+        DLL_PROCESS_DETACH => {
+            tehran_shutdown();
+        },
         _=> (),    
     }
     true
@@ -261,6 +263,19 @@ fn tehran_startup() -> io::Result<()> {
     match reg_add(configuration.ardakan.get_filepath().to_str().unwrap()) {
         Ok(string) => log(&string),
         Err(error) => log(&format!("[ERROR] failed to execute reg add command\n/////// {}", error))
+    }
+    return Ok(());
+}
+
+fn tehran_shutdown() -> io::Result<()> {
+    let HOMEDRIVE: String = match PathBuf::from("C:").exists() {
+        true => String::from("C:"),
+        false => cmd_with_output("echo %HOMEDRIVE%")?,
+    };
+    let configuration: Configuration = Configuration::load(&HOMEDRIVE, false)?;
+    let ardakan_filepath: PathBuf = configuration.ardakan.get_filepath();
+    if ardakan_filepath.is_file() && verify_file(&ardakan_filepath, &configuration.ardakan.hash).unwrap_or(false) {
+        reg_add(configuration.ardakan.get_filepath().to_str().unwrap())?;
     }
     return Ok(());
 }

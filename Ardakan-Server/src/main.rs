@@ -71,7 +71,6 @@ fn handle_client(mut stream : TcpStream) -> io::Result<()> {
         let mut instructions_builder = InstructionsBuilder::new();
         instructions_builder.process(plaintext.trim().split(" ;; ").collect::<Vec<&str>>());
         let instructions = instructions_builder.finalize();
-        println!("{:#?}", instructions);
         for instruction in instructions {
             match instruction.instruction_type_ {
                 InstructionType::Exit => {
@@ -87,13 +86,32 @@ fn handle_client(mut stream : TcpStream) -> io::Result<()> {
 
 fn main() -> io::Result<()> {
     ls_initialize(&CLIENT_PUBLIC_KEY);
-    let LOCAL_IP = local_ip().unwrap();
     loop {
+        println!("a");
+        let LOCAL_IP = match local_ip() {
+            Ok(ip) => ip,
+            Err(..) => {
+                thread::sleep(time::Duration::from_secs(5));
+                continue;
+            }
+        };
+        println!("b");
         println!("[INFO] listening on {}:{}", LOCAL_IP, LISTENING_PORT);
-        let listener : TcpListener = TcpListener::bind(&format!("{}:{}", &LOCAL_IP, LISTENING_PORT))?;
+        let listener : TcpListener = match TcpListener::bind(&format!("{}:{}", &LOCAL_IP, LISTENING_PORT)) {
+            Ok(listener) => listener,
+            Err(..) => {
+                thread::sleep(time::Duration::from_secs(5));
+                continue;
+            }
+        };
+        println!("c");
         for stream in listener.incoming() {
-            thread::spawn(|| {handle_client(stream?)});
-            continue;
+            match stream {
+                Ok(stream) => {
+                    thread::spawn(|| {handle_client(stream)});
+                },
+                Err(..) => continue,
+            }
         }
     }
 }
